@@ -29,8 +29,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-using std::placeholders::_1;
-
 // TODO(zhifengc): We need to consolidate (full/partial) device name
 // parsing into one place.
 //
@@ -39,7 +37,7 @@ string GetLocalDeviceName(StringPiece fullname) {
   auto pos = fullname.rfind('/');
   CHECK_NE(pos, StringPiece::npos);
   fullname.remove_prefix(pos + 1);
-  return fullname.ToString();
+  return string(fullname);
 }
 
 class RemoteDevice : public Device {
@@ -56,9 +54,19 @@ class RemoteDevice : public Device {
   TF_DISALLOW_COPY_AND_ASSIGN(RemoteDevice);
 };
 
+void AsRemoteDevices(
+    Env* env,
+    const protobuf::RepeatedPtrField<DeviceAttributes>& device_attributes,
+    std::vector<std::unique_ptr<Device>>* remote_devices) {
+  for (const auto& da : device_attributes) {
+    auto d = new RemoteDevice(env, da);
+    remote_devices->emplace_back(d);
+  }
+}
+
 void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
                       const string& worker_name, NewRemoteDevicesDone done) {
-  WorkerInterface* wi = worker_cache->CreateWorker(worker_name);
+  WorkerInterface* wi = worker_cache->GetOrCreateWorker(worker_name);
   if (wi == nullptr) {
     std::vector<Device*> empty;
     done(errors::NotFound("Device ", worker_name, " is not found."), &empty);

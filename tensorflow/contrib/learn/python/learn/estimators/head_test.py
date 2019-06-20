@@ -33,6 +33,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses as losses_lib
 from tensorflow.python.platform import test
@@ -61,8 +62,8 @@ def _assert_no_variables(test_case):
 def _assert_metrics(test_case, expected_loss, expected_eval_metrics,
                     model_fn_ops):
   test_case.assertAlmostEqual(expected_loss, model_fn_ops.loss.eval(), places=4)
-  for k in six.iterkeys(expected_eval_metrics):
-    test_case.assertIn(k, six.iterkeys(model_fn_ops.eval_metric_ops))
+  for k in expected_eval_metrics:
+    test_case.assertIn(k, model_fn_ops.eval_metric_ops)
   variables.initialize_local_variables().run()
   for key, expected_value in six.iteritems(expected_eval_metrics):
     value_tensor, update_tensor = model_fn_ops.eval_metric_ops[key]
@@ -153,6 +154,25 @@ class RegressionHeadTest(test.TestCase):
       _assert_no_variables(self)
       _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
 
+  def testRegressionWithLogitFn(self):
+    head = head_lib.regression_head(link_fn=math_ops.square)
+    def _assert_preditions(test_case, expected_predictions, model_fn_ops):
+      variables.initialize_local_variables().run()
+      test_case.assertAllClose(expected_predictions,
+                               model_fn_ops.predictions["scores"].eval())
+    with ops.Graph().as_default(), session.Session():
+      model_fn_ops = head.create_model_fn_ops(
+          {},
+          labels=((0.,), (1.,), (1.,)),
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=((1.,), (1.,), (3.,)))
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_summary_tags(self, ["loss"])
+      _assert_no_variables(self)
+      _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
+      _assert_preditions(self, ([1.0, 1.0, 9.0]), model_fn_ops)
+
   def testRegressionWithInvalidLogits(self):
     head = head_lib.regression_head()
     with ops.Graph().as_default(), session.Session():
@@ -225,20 +245,56 @@ class RegressionHeadTest(test.TestCase):
       _assert_summary_tags(self, ["loss"])
       _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
 
-  def testRegressionWithWeights(self):
+  def testRegressionWithScalarWeights(self):
     head = head_lib.regression_head(weight_column_name="label_weight")
     with ops.Graph().as_default(), session.Session():
-      weights = ((2.,), (5.,), (0.,))
+      weights = 2.
+      labels = ((0.,), (1.,), (1.,))
       model_fn_ops = head.create_model_fn_ops(
           features={"label_weight": weights},
-          labels=((0.,), (1.,), (1.,)),
+          labels=labels,
           mode=model_fn.ModeKeys.TRAIN,
           train_op_fn=head_lib.no_op_train_fn,
           logits=((1.,), (1.,), (3.,)))
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
       _assert_summary_tags(self, ["loss"])
-      _assert_metrics(self, 2. / len(weights), {"loss": 2. / np.sum(weights)},
+      _assert_metrics(self, (weights * 5.) / len(labels), {
+          "loss": (weights * 5.) / (weights * len(labels))
+      }, model_fn_ops)
+
+  def testRegressionWith1DWeights(self):
+    head = head_lib.regression_head(weight_column_name="label_weight")
+    with ops.Graph().as_default(), session.Session():
+      weights = (2., 5., 0.)
+      labels = ((0.,), (1.,), (1.,))
+      model_fn_ops = head.create_model_fn_ops(
+          features={"label_weight": weights},
+          labels=labels,
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=((1.,), (1.,), (3.,)))
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
+      _assert_metrics(self, 2. / len(labels), {"loss": 2. / np.sum(weights)},
+                      model_fn_ops)
+
+  def testRegressionWith2DWeights(self):
+    head = head_lib.regression_head(weight_column_name="label_weight")
+    with ops.Graph().as_default(), session.Session():
+      weights = ((2.,), (5.,), (0.,))
+      labels = ((0.,), (1.,), (1.,))
+      model_fn_ops = head.create_model_fn_ops(
+          features={"label_weight": weights},
+          labels=labels,
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=((1.,), (1.,), (3.,)))
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
+      _assert_metrics(self, 2. / len(labels), {"loss": 2. / np.sum(weights)},
                       model_fn_ops)
 
   def testRegressionWithCenteredBias(self):
@@ -489,19 +545,19 @@ class MultiLabelHeadTest(test.TestCase):
       with session.Session():
         self.assertListEqual(
             [1, 0, 0], model_fn_ops.predictions["classes"].eval().tolist()[0])
-        self.assertItemsEqual(
-            ["head_name"], six.iterkeys(model_fn_ops.output_alternatives))
+        self.assertItemsEqual(["head_name"],
+                              list(model_fn_ops.output_alternatives))
         self.assertEqual(
             constants.ProblemType.CLASSIFICATION,
             model_fn_ops.output_alternatives["head_name"][0])
 
         predictions_for_serving = (
             model_fn_ops.output_alternatives["head_name"][1])
-        self.assertIn("classes", six.iterkeys(predictions_for_serving))
+        self.assertIn("classes", predictions_for_serving)
         self.assertAllEqual(
             [[b"0", b"1", b"2"], [b"0", b"1", b"2"]],
             predictions_for_serving["classes"].eval())
-        self.assertIn("probabilities", six.iterkeys(predictions_for_serving))
+        self.assertIn("probabilities", predictions_for_serving)
         self.assertAllClose(
             [[0.731059, 0.5, 0.5],
              [0.5, 0.5, 0.731059,]],
@@ -525,7 +581,7 @@ class MultiLabelHeadTest(test.TestCase):
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
 
-  def testMultiLabelWithWeight(self):
+  def testMultiLabelWithScalarWeight(self):
     n_classes = 3
     head = head_lib.multi_label_head(
         n_classes=n_classes,
@@ -544,7 +600,23 @@ class MultiLabelHeadTest(test.TestCase):
       _assert_metrics(self, .089985214,
                       self._expected_eval_metrics(.89985214), model_fn_ops)
 
-  def testMultiLabelWithMultiDimensionalWeight(self):
+  def testMultiLabelWith1DWeight(self):
+    n_classes = 3
+    head = head_lib.multi_label_head(
+        n_classes=n_classes,
+        weight_column_name="label_weight",
+        metric_class_ids=range(n_classes))
+    with ops.Graph().as_default(), session.Session():
+      with self.assertRaisesRegexp(
+          ValueError, "weights can not be broadcast to values"):
+        head.create_model_fn_ops(
+            features={"label_weight": (.1, .1, .1)},
+            labels=self._labels,
+            mode=model_fn.ModeKeys.TRAIN,
+            train_op_fn=head_lib.no_op_train_fn,
+            logits=self._logits)
+
+  def testMultiLabelWith2DWeight(self):
     n_classes = 3
     head = head_lib.multi_label_head(
         n_classes=n_classes,
@@ -778,18 +850,18 @@ class BinaryClassificationHeadTest(test.TestCase):
       with session.Session():
         self.assertListEqual(
             [1, 1], list(model_fn_ops.predictions["classes"].eval()))
-        self.assertItemsEqual(
-            ["head_name"], six.iterkeys(model_fn_ops.output_alternatives))
+        self.assertItemsEqual(["head_name"],
+                              list(model_fn_ops.output_alternatives))
         self.assertEqual(
             constants.ProblemType.LOGISTIC_REGRESSION,
             model_fn_ops.output_alternatives["head_name"][0])
         predictions_for_serving = (
             model_fn_ops.output_alternatives["head_name"][1])
-        self.assertIn("classes", six.iterkeys(predictions_for_serving))
+        self.assertIn("classes", predictions_for_serving)
         predicted_classes = predictions_for_serving["classes"].eval().tolist()
         self.assertListEqual(
             [b"0", b"1"], predicted_classes[0])
-        self.assertIn("probabilities", six.iterkeys(predictions_for_serving))
+        self.assertIn("probabilities", predictions_for_serving)
 
   def testBinaryClassificationInferMode_withWeightColumn(self):
     n_classes = 2
@@ -843,7 +915,42 @@ class BinaryClassificationHeadTest(test.TestCase):
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
 
-  def testBinaryClassificationWithWeights(self):
+  def testBinaryClassificationWith1DWeights(self):
+    n_classes = 2
+    head = head_lib.multi_class_head(
+        n_classes=n_classes, weight_column_name="label_weight")
+    with ops.Graph().as_default(), session.Session():
+      weights = (1., 0.)
+      # logloss: z:label, x:logit
+      # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+      model_fn_ops = head.create_model_fn_ops(
+          features={"label_weight": weights},
+          labels=self._labels,
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=self._logits)
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
+      expected_total_loss = .31326166
+      _assert_metrics(
+          self,
+          expected_total_loss / len(weights),
+          {
+              "accuracy": 1. / 1,
+              "accuracy/baseline_label_mean": 1. / 1,
+              "accuracy/threshold_0.500000_mean": 1. / 1,
+              "auc": 0. / 1,
+              "labels/actual_label_mean": 1. / 1,
+              "labels/prediction_mean": .731059,  # softmax
+              # eval loss is weighted loss divided by sum of weights.
+              "loss": expected_total_loss,
+              "precision/positive_threshold_0.500000_mean": 1. / 1,
+              "recall/positive_threshold_0.500000_mean": 1. / 1,
+          },
+          model_fn_ops)
+
+  def testBinaryClassificationWith2DWeights(self):
     n_classes = 2
     head = head_lib.multi_class_head(
         n_classes=n_classes, weight_column_name="label_weight")
@@ -1154,6 +1261,30 @@ class MultiClassHeadTest(test.TestCase):
       _assert_metrics(self, expected_loss * weight,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
 
+  def testMultiClassWith1DWeight(self):
+    n_classes = 3
+    head = head_lib.multi_class_head(
+        n_classes=n_classes,
+        weight_column_name="label_weight",
+        metric_class_ids=range(n_classes))
+    with ops.Graph().as_default(), session.Session():
+      weight = .1
+      weights = (weight,)
+      # logloss: z:label, x:logit
+      # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+      model_fn_ops = head.create_model_fn_ops(
+          features={"label_weight": weights},
+          labels=self._labels,
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=self._logits)
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
+      expected_loss = 1.5514447
+      _assert_metrics(self, expected_loss * weight,
+                      self._expected_eval_metrics(expected_loss), model_fn_ops)
+
   def testMultiClassWith2DWeight(self):
     n_classes = 3
     head = head_lib.multi_class_head(
@@ -1218,18 +1349,18 @@ class MultiClassHeadTest(test.TestCase):
         self.assertAllEqual(
             [0, 2],
             model_fn_ops.predictions["classes"].eval())
-        self.assertItemsEqual(
-            ["head_name"], six.iterkeys(model_fn_ops.output_alternatives))
+        self.assertItemsEqual(["head_name"],
+                              list(model_fn_ops.output_alternatives))
         self.assertEqual(
             constants.ProblemType.CLASSIFICATION,
             model_fn_ops.output_alternatives["head_name"][0])
         predictions_for_serving = (
             model_fn_ops.output_alternatives["head_name"][1])
-        self.assertIn("classes", six.iterkeys(predictions_for_serving))
+        self.assertIn("classes", predictions_for_serving)
         self.assertAllEqual(
             [[b"0", b"1", b"2"], [b"0", b"1", b"2"]],
             predictions_for_serving["classes"].eval())
-        self.assertIn("probabilities", six.iterkeys(predictions_for_serving))
+        self.assertIn("probabilities", predictions_for_serving)
         self.assertAllClose(
             [[0.576117, 0.2119416, 0.2119416],
              [0.2119416, 0.2119416, 0.576117]],
@@ -1270,18 +1401,18 @@ class MultiClassHeadTest(test.TestCase):
         self.assertAllEqual(
             [b"key0", b"key2"],
             model_fn_ops.predictions["classes"].eval())
-        self.assertItemsEqual(
-            ["head_name"], six.iterkeys(model_fn_ops.output_alternatives))
+        self.assertItemsEqual(["head_name"],
+                              list(model_fn_ops.output_alternatives))
         self.assertEqual(
             constants.ProblemType.CLASSIFICATION,
             model_fn_ops.output_alternatives["head_name"][0])
         predictions_for_serving = (
             model_fn_ops.output_alternatives["head_name"][1])
-        self.assertIn("classes", six.iterkeys(predictions_for_serving))
+        self.assertIn("classes", predictions_for_serving)
         self.assertAllEqual(
             [[b"key0", b"key1", b"key2"], [b"key0", b"key1", b"key2"]],
             predictions_for_serving["classes"].eval())
-        self.assertIn("probabilities", six.iterkeys(predictions_for_serving))
+        self.assertIn("probabilities", predictions_for_serving)
         self.assertAllClose(
             [[0.576117, 0.2119416, 0.2119416],
              [0.2119416, 0.2119416, 0.576117]],
@@ -1457,7 +1588,27 @@ class BinarySvmHeadTest(test.TestCase):
           "loss": expected_loss,
       }, model_fn_ops)
 
-  def testBinarySVMWithWeights(self):
+  def testBinarySVMWith1DWeights(self):
+    head = head_lib.binary_svm_head(weight_column_name="weights")
+    with ops.Graph().as_default(), session.Session():
+      weights = (7., 11.)
+      model_fn_ops = head.create_model_fn_ops(
+          # We have to add an extra dim here for weights broadcasting to work.
+          features={"weights": weights},
+          mode=model_fn.ModeKeys.TRAIN,
+          labels=self._labels,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=self._predictions)
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
+      expected_weighted_losses = np.multiply(weights, self._expected_losses)
+      _assert_metrics(self, np.mean(expected_weighted_losses), {
+          "accuracy": 1.,
+          "loss": np.sum(expected_weighted_losses) / np.sum(weights),
+      }, model_fn_ops)
+
+  def testBinarySVMWith2DWeights(self):
     head = head_lib.binary_svm_head(weight_column_name="weights")
     with ops.Graph().as_default(), session.Session():
       weights = (7., 11.)
@@ -1507,6 +1658,21 @@ class BinarySvmHeadTest(test.TestCase):
       }, model_fn_ops)
 
 
+class LossOnlyHead(test.TestCase):
+
+  def testNoPredictionsAndNoMetrics(self):
+    head = head_lib.loss_only_head(lambda: 1, head_name="const")
+    model_fn_ops = head.create_model_fn_ops(
+        features={},
+        mode=model_fn.ModeKeys.TRAIN,
+        train_op_fn=head_lib.no_op_train_fn)
+    self.assertDictEqual(model_fn_ops.predictions, {})
+    self.assertDictEqual(model_fn_ops.eval_metric_ops, {})
+    self.assertIsNotNone(model_fn_ops.loss)
+    with session.Session() as sess:
+      self.assertEqual(1, sess.run(model_fn_ops.loss))
+
+
 class MultiHeadTest(test.TestCase):
 
   def testInvalidHeads(self):
@@ -1541,7 +1707,8 @@ class MultiHeadTest(test.TestCase):
         n_classes=3, label_name="label1", head_name="head1")
     head2 = head_lib.multi_class_head(
         n_classes=4, label_name="label2", head_name="head2")
-    head = head_lib.multi_head((head1, head2))
+    head3 = head_lib.loss_only_head(lambda: 1.0, head_name="const")
+    head = head_lib.multi_head((head1, head2, head3))
     labels = {
         "label1": (1,),
         "label2": (1,)
@@ -1556,11 +1723,11 @@ class MultiHeadTest(test.TestCase):
     self.assertIsNone(model_fn_ops.predictions)
     self.assertIsNotNone(model_fn_ops.loss)
     self.assertIsNotNone(model_fn_ops.train_op)
-    self.assertFalse(model_fn_ops.eval_metric_ops)
+    self.assertTrue(model_fn_ops.eval_metric_ops)
     self.assertIsNone(model_fn_ops.output_alternatives)
 
     with session.Session() as sess:
-      self.assertAlmostEqual(2.224, sess.run(model_fn_ops.loss), places=3)
+      self.assertAlmostEqual(3.224, sess.run(model_fn_ops.loss), places=3)
 
   def testTrain_withHeadWeights(self):
     head1 = head_lib.multi_class_head(
@@ -1581,7 +1748,7 @@ class MultiHeadTest(test.TestCase):
     self.assertIsNone(model_fn_ops.predictions)
     self.assertIsNotNone(model_fn_ops.loss)
     self.assertIsNotNone(model_fn_ops.train_op)
-    self.assertFalse(model_fn_ops.eval_metric_ops)
+    self.assertTrue(model_fn_ops.eval_metric_ops)
     self.assertIsNone(model_fn_ops.output_alternatives)
 
     with session.Session() as sess:
@@ -1608,7 +1775,7 @@ class MultiHeadTest(test.TestCase):
     self.assertIsNone(model_fn_ops.predictions)
     self.assertIsNotNone(model_fn_ops.loss)
     self.assertIsNotNone(model_fn_ops.train_op)
-    self.assertFalse(model_fn_ops.eval_metric_ops)
+    self.assertTrue(model_fn_ops.eval_metric_ops)
     self.assertIsNone(model_fn_ops.output_alternatives)
 
     with session.Session() as sess:

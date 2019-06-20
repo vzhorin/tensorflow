@@ -36,6 +36,7 @@ from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import test_data
 from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 from tensorflow.contrib.metrics.python.ops import metric_ops
+from tensorflow.python.feature_column import feature_column_lib as fc_core
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -420,6 +421,52 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
     scores = classifier.evaluate(input_fn=_input_fn, steps=100)
     _assert_metrics_in_range(('accuracy', 'auc'), scores)
 
+  def testEstimatorWithCoreFeatureColumns(self):
+    """Tests binary classification using Tensor data as input."""
+
+    def _input_fn():
+      iris = test_data.prepare_iris_data_for_logistic_regression()
+      features = {}
+      for i in range(4):
+        # The following shows how to provide the Tensor data for
+        # RealValuedColumns.
+        features.update({
+            str(i):
+                array_ops.reshape(
+                    constant_op.constant(iris.data[:, i], dtype=dtypes.float32),
+                    [-1, 1])
+        })
+      # The following shows how to provide the SparseTensor data for
+      # a SparseColumn.
+      features['dummy_sparse_column'] = sparse_tensor.SparseTensor(
+          values=['en', 'fr', 'zh'],
+          indices=[[0, 0], [0, 1], [60, 0]],
+          dense_shape=[len(iris.target), 2])
+      labels = array_ops.reshape(
+          constant_op.constant(iris.target, dtype=dtypes.int32), [-1, 1])
+      return features, labels
+
+    iris = test_data.prepare_iris_data_for_logistic_regression()
+    cont_features = [fc_core.numeric_column(str(i)) for i in range(4)]
+    linear_features = [
+        fc_core.bucketized_column(
+            cont_features[i],
+            sorted(set(test_data.get_quantile_based_buckets(
+                iris.data[:, i], 10)))) for i in range(4)
+    ]
+    linear_features.append(
+        fc_core.categorical_column_with_hash_bucket(
+            'dummy_sparse_column', hash_bucket_size=100))
+
+    classifier = dnn_linear_combined.DNNLinearCombinedClassifier(
+        linear_feature_columns=linear_features,
+        dnn_feature_columns=cont_features,
+        dnn_hidden_units=[3, 3])
+
+    classifier.fit(input_fn=_input_fn, steps=100)
+    scores = classifier.evaluate(input_fn=_input_fn, steps=100)
+    _assert_metrics_in_range(('accuracy', 'auc'), scores)
+
   def testTrainWithPartitionedVariables(self):
     """Tests training with partitioned variables."""
 
@@ -760,7 +807,7 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
     def _my_metric_op(predictions, labels):
       # For the case of binary classification, the 2nd column of "predictions"
       # denotes the model predictions.
-      labels = math_ops.to_float(labels)
+      labels = math_ops.cast(labels, dtypes.float32)
       predictions = array_ops.strided_slice(
           predictions, [0, 1], [-1, 2], end_mask=1)
       return math_ops.reduce_sum(math_ops.multiply(predictions, labels))
@@ -995,9 +1042,18 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
         dnn_hidden_units=[3, 3],
         fix_global_step_increment_bug=False)
     classifier.fit(input_fn=input_fn, steps=100, monitors=[step_counter])
+    global_step = classifier.get_variable_value('global_step')
 
-    # Expected is 100, but because of the global step increment bug, this is 51.
-    self.assertEqual(51, step_counter.steps)
+    if global_step == 100:
+      # Expected is 100, but because of the global step increment bug, is 50.
+      # Occasionally, step increments one more time due to a race condition,
+      # reaching 51 steps.
+      self.assertIn(step_counter.steps, [50, 51])
+    else:
+      # Occasionally, training stops when global_step == 102, due to a race
+      # condition. In addition, occasionally step increments one more time due
+      # to a race condition reaching 52 steps.
+      self.assertIn(step_counter.steps, [51, 52])
 
   def testGlobalStepDNNLinearCombinedBugFixed(self):
     """Tests global step update for dnn-linear combined model."""
@@ -1738,14 +1794,14 @@ class FeatureEngineeringFunctionTest(test.TestCase):
         dnn_hidden_units=[3, 3],
         config=run_config.RunConfig(tf_random_seed=1),
         feature_engineering_fn=feature_engineering_fn)
-    estimator_with_fe_fn.fit(input_fn=input_fn, steps=100)
+    estimator_with_fe_fn.fit(input_fn=input_fn, steps=110)
 
     estimator_without_fe_fn = dnn_linear_combined.DNNLinearCombinedRegressor(
         linear_feature_columns=[feature_column.real_valued_column('x')],
         dnn_feature_columns=[feature_column.real_valued_column('x')],
         dnn_hidden_units=[3, 3],
         config=run_config.RunConfig(tf_random_seed=1))
-    estimator_without_fe_fn.fit(input_fn=input_fn, steps=100)
+    estimator_without_fe_fn.fit(input_fn=input_fn, steps=110)
 
     # predictions = y
     prediction_with_fe_fn = next(

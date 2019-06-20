@@ -26,7 +26,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace {
-enum { QUANTIZE_MODE_MIN_COMBINED, QUANTIZE_MODE_MIN_FIRST };
+enum {
+  QUANTIZE_MODE_MIN_COMBINED,
+  QUANTIZE_MODE_MIN_FIRST,
+  QUANTIZE_MODE_SCALED,
+};
 }  // namespace
 
 namespace tensorflow {
@@ -37,22 +41,20 @@ template <typename Device, typename T>
 class DequantizeOp : public OpKernel {
  public:
   explicit DequantizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    half_range_ = !std::is_signed<T>::value
-                      ? 0.0f
-                      : (static_cast<float>(std::numeric_limits<T>::max()) -
-                         std::numeric_limits<T>::min() + 1) /
-                            2.0f;
     string mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
     OP_REQUIRES(ctx,
-                (mode_string == "MIN_COMBINED" || mode_string == "MIN_FIRST"),
-                errors::InvalidArgument("Mode string must be 'MIN_COMBINED' or"
-                                        " 'MIN_FIRST', is '" +
+                (mode_string == "MIN_COMBINED" || mode_string == "MIN_FIRST" ||
+                 mode_string == "SCALED"),
+                errors::InvalidArgument("Mode string must be 'MIN_COMBINED',"
+                                        " 'MIN_FIRST', or 'SCALED', is '" +
                                         mode_string + "'"));
     if (mode_string == "MIN_COMBINED") {
       mode_ = QUANTIZE_MODE_MIN_COMBINED;
     } else if (mode_string == "MIN_FIRST") {
       mode_ = QUANTIZE_MODE_MIN_FIRST;
+    } else if (mode_string == "SCALED") {
+      mode_ = QUANTIZE_MODE_SCALED;
     }
   }
 
@@ -60,6 +62,12 @@ class DequantizeOp : public OpKernel {
     const Tensor& input = ctx->input(0);
     const float min_range = ctx->input(1).flat<float>()(0);
     const float max_range = ctx->input(2).flat<float>()(0);
+    const float half_range =
+        !std::is_signed<T>::value
+            ? 0.0f
+            : (static_cast<float>(std::numeric_limits<T>::max()) -
+               std::numeric_limits<T>::min() + 1) /
+                  2.0f;
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
@@ -69,15 +77,11 @@ class DequantizeOp : public OpKernel {
           (static_cast<float>(std::numeric_limits<T>::max()) -
            std::numeric_limits<T>::min());
 
-      float* out_ptr = output->flat<float>().data();
-      const T* in_ptr = input.flat<T>().data();
+      const auto& input_tensor = input.flat<T>();
+      output->flat<float>().device(ctx->eigen_device<Device>()) =
+          ((input_tensor.template cast<float>() + half_range) * scale_factor) +
+          min_range;
 
-      const int64 num_elements = input.NumElements();
-      for (int i = 0; i < num_elements; ++i) {
-        out_ptr[i] =
-            ((static_cast<int>(in_ptr[i]) + half_range_) * scale_factor) +
-            min_range;
-      }
     } else if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
       if (meta::IsSupportedAndEnabled() && std::is_same<T, quint8>()) {
         auto input_ui8_array = input.flat<quint8>();
@@ -88,11 +92,20 @@ class DequantizeOp : public OpKernel {
             ctx->template eigen_device<Device>(), input, min_range, max_range,
             output);
       }
+    } else if (mode_ == QUANTIZE_MODE_SCALED) {
+      const float scale_factor =
+          std::numeric_limits<T>::min() == 0
+              ? (max_range / std::numeric_limits<T>::max())
+              : std::max(min_range / std::numeric_limits<T>::min(),
+                         max_range / std::numeric_limits<T>::max());
+      const auto& input_tensor = input.flat<T>();
+      output->flat<float>().device(ctx->eigen_device<Device>()) =
+          input_tensor.template cast<int>().template cast<float>() *
+          scale_factor;
     }
   }
 
  private:
-  float half_range_;
   int mode_;
 };
 

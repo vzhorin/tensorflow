@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/robust_stats.h"
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace tensorflow {
 namespace grappler {
@@ -47,7 +48,7 @@ static double Median(std::vector<double> &&values) {
   // nth_element.
   const auto lower_middle = std::max_element(values.begin(), middle);
   // Preventing overflow. We know that '*lower_middle <= *middle'.
-  // If both are on oposite sides of zero, the sum won't overflow, otherwise
+  // If both are on opposite sides of zero, the sum won't overflow, otherwise
   // the difference won't overflow.
   if (*lower_middle <= 0 && *middle >= 0) {
     return (*lower_middle + *middle) / 2;

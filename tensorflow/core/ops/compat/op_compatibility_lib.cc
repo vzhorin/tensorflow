@@ -74,7 +74,7 @@ Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
     }
     if (!removed.empty()) {
       return errors::InvalidArgument("Error, stable op(s) removed: ",
-                                     str_util::Join(removed, ", "));
+                                     absl::StrJoin(removed, ", "));
     }
   }
 
@@ -145,6 +145,11 @@ Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
           TF_RETURN_IF_ERROR(
               OpDefCompatible(in_op_history.op(i), op_list_.op(cur)));
         }
+
+        // Verify default value of attrs has not been added/removed/modified
+        // as compared to only the last historical version.
+        TF_RETURN_IF_ERROR(OpDefAttrDefaultsUnchanged(in_op_history.op(end - 1),
+                                                      op_list_.op(cur)));
 
         // Check that attrs missing from in_op_history.op(start) don't
         // change their defaults.

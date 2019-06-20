@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/cc/client/client_session.h"
 
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/platform/env.h"
@@ -31,7 +32,7 @@ class ClientSession::Impl {
   friend class ClientSession;
 
   Impl(Session* session, std::shared_ptr<Graph> graph)
-      : session_(session), graph_(graph) {}
+      : session_(session), graph_(std::move(graph)) {}
 
   static SessionOptions MakeDefaultSessionOptions(const string& target);
   Status MaybeExtendGraph() const;
@@ -112,16 +113,45 @@ Status ClientSession::Run(const RunOptions& run_options, const FeedType& inputs,
     feeds.emplace_back(feed.first.name(), feed.second.tensor);
   }
   std::vector<string> output_tensor_names;
+  output_tensor_names.reserve(fetch_outputs.size());
   for (auto const& output : fetch_outputs) {
     output_tensor_names.push_back(output.name());
   }
   std::vector<string> target_node_names;
+  target_node_names.reserve(run_outputs.size());
   for (auto const& output : run_outputs) {
     target_node_names.push_back(output.node()->name());
   }
   TF_RETURN_IF_ERROR(impl()->MaybeExtendGraph());
   return impl()->session_->Run(run_options, feeds, output_tensor_names,
                                target_node_names, outputs, run_metadata);
+}
+
+Status ClientSession::MakeCallable(const CallableOptions& callable_options,
+                                   CallableHandle* out_handle) {
+  TF_RETURN_IF_ERROR(impl()->MaybeExtendGraph());
+  return impl()->session_->MakeCallable(callable_options, out_handle);
+}
+
+Status ClientSession::RunCallable(CallableHandle handle,
+                                  const std::vector<Tensor>& feed_tensors,
+                                  std::vector<Tensor>* fetch_tensors,
+                                  RunMetadata* run_metadata) {
+  return impl()->session_->RunCallable(handle, feed_tensors, fetch_tensors,
+                                       run_metadata);
+}
+
+Status ClientSession::RunCallable(CallableHandle handle,
+                                  const std::vector<Tensor>& feed_tensors,
+                                  std::vector<Tensor>* fetch_tensors,
+                                  RunMetadata* run_metadata,
+                                  const thread::ThreadPoolOptions& options) {
+  return impl()->session_->RunCallable(handle, feed_tensors, fetch_tensors,
+                                       run_metadata, options);
+}
+
+Status ClientSession::ReleaseCallable(CallableHandle handle) {
+  return impl()->session_->ReleaseCallable(handle);
 }
 
 }  // end namespace tensorflow

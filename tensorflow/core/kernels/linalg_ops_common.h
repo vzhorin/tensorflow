@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_LINALG_OPS_COMMON_H_
-#define TENSORFLOW_KERNELS_LINALG_OPS_COMMON_H_
+#ifndef TENSORFLOW_CORE_KERNELS_LINALG_OPS_COMMON_H_
+#define TENSORFLOW_CORE_KERNELS_LINALG_OPS_COMMON_H_
 
 // Classes to support linear algebra functionality, similar to the numpy.linalg
 // module. Supports batch computation on several matrices at once, sharding the
@@ -113,6 +113,8 @@ class LinearAlgebraOp : public OpKernel {
       Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
   using ConstMatrixMap = Eigen::Map<const Matrix>;
   using MatrixMap = Eigen::Map<Matrix>;
+  using ConstVectorMap =
+      Eigen::Map<const Eigen::Matrix<Scalar, 1, Eigen::Dynamic>>;
   using ConstMatrixMaps = gtl::InlinedVector<ConstMatrixMap, 4>;
   using MatrixMaps = gtl::InlinedVector<MatrixMap, 4>;
   using RealScalar = typename Eigen::NumTraits<Scalar>::Real;
@@ -127,26 +129,9 @@ class LinearAlgebraOp : public OpKernel {
                              const ConstMatrixMaps& inputs,
                              MatrixMaps* outputs) = 0;
 
+ private:
   using TensorInputs = gtl::InlinedVector<const Tensor*, 4>;
   using TensorOutputs = gtl::InlinedVector<Tensor*, 4>;
-
-  // Hook for doing batch-wide processing before ComputeMatrix is called
-  // on each individual slice.
-  virtual void BatchPreCompute(OpKernelContext* context,
-                               const TensorInputs& inputs,
-                               const TensorShapes& input_matrix_shapes,
-                               const TensorOutputs& outputs,
-                               const TensorShapes& output_matrix_shapes) {}
-
-  // Hook for doing batch-wide processing after ComputeMatrix is called
-  // on each individual slice.
-  virtual void BatchPostCompute(OpKernelContext* context,
-                                const TensorInputs& inputs,
-                                const TensorShapes& input_matrix_shapes,
-                                const TensorOutputs& outputs,
-                                const TensorShapes& output_matrix_shapes) {}
-
- private:
   // This function maps 2-d slices (matrices) of the input and output tensors
   // using Eigen::Map and calls ComputeMatrix implemented in terms of the
   // Eigen::MatrixBase API by the derived class.
@@ -180,8 +165,8 @@ class LinearAlgebraOp : public OpKernel {
                       TensorShapes* output_matrix_shapes);
 };
 
-// Declare that LinearAlgebraOp is explicitly instantiated in
-// linalg_ops_common.cc for float and double.
+// Declare LinearAlgebraOp, which is explicitly instantiated in
+// linalg_ops_common.cc for float, double, complex64, and complex128.
 extern template class LinearAlgebraOp<float>;
 extern template class LinearAlgebraOp<double>;
 extern template class LinearAlgebraOp<complex64>;
@@ -189,16 +174,16 @@ extern template class LinearAlgebraOp<complex128>;
 
 }  // namespace tensorflow
 
-#define INHERIT_LINALG_TYPEDEFS(Scalar)                   \
-  typedef LinearAlgebraOp<Scalar> Base;                   \
-  using Matrix = typename Base::Matrix;                   \
-  using MatrixMap = typename Base::MatrixMap;             \
-  using MatrixMaps = typename Base::MatrixMaps;           \
-  using ConstMatrixMap = typename Base::ConstMatrixMap;   \
-  using ConstMatrixMaps = typename Base::ConstMatrixMaps; \
-  using TensorShapes = typename Base::TensorShapes;       \
-  using TensorInputs = typename Base::TensorInputs;       \
-  using TensorOutputs = typename Base::TensorOutputs
+#define INHERIT_LINALG_TYPEDEFS(Scalar)                       \
+  typedef LinearAlgebraOp<Scalar> Base;                       \
+  using RealScalar = typename Eigen::NumTraits<Scalar>::Real; \
+  using Matrix = typename Base::Matrix;                       \
+  using MatrixMap = typename Base::MatrixMap;                 \
+  using MatrixMaps = typename Base::MatrixMaps;               \
+  using ConstMatrixMap = typename Base::ConstMatrixMap;       \
+  using ConstMatrixMaps = typename Base::ConstMatrixMaps;     \
+  using ConstVectorMap = typename Base::ConstVectorMap;       \
+  using TensorShapes = typename Base::TensorShapes;
 
 #define REGISTER_LINALG_OP_CPU(OpName, OpClass, Scalar) \
   REGISTER_KERNEL_BUILDER(                              \
@@ -212,4 +197,4 @@ extern template class LinearAlgebraOp<complex128>;
 #define REGISTER_LINALG_OP(OpName, OpClass, Scalar) \
   REGISTER_LINALG_OP_CPU(OpName, OpClass, Scalar)
 
-#endif  // TENSORFLOW_KERNELS_LINALG_OPS_COMMON_H_
+#endif  // TENSORFLOW_CORE_KERNELS_LINALG_OPS_COMMON_H_

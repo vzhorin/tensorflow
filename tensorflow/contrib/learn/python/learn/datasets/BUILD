@@ -1,12 +1,13 @@
 # Prepare training and testing data.
 
-package(default_visibility = ["//tensorflow:internal"])
+load("//tensorflow:tensorflow.bzl", "py_test")
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 filegroup(
     name = "data_csv",
@@ -29,6 +30,7 @@ py_library(
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "//tensorflow/python:random_seed",
         "//third_party/py/numpy",
     ],
 )
@@ -36,36 +38,23 @@ py_library(
 py_binary(
     name = "produce_small_datasets",
     srcs = ["produce_small_datasets.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
-        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:platform",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 py_test(
     name = "base_test",
     size = "small",
     srcs = ["base_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
-        "//tensorflow/contrib/learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -73,12 +62,11 @@ py_test(
     name = "load_csv_test",
     size = "small",
     srcs = ["load_csv_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
-        "//tensorflow/contrib/learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -86,13 +74,11 @@ py_test(
     name = "synthetic_test",
     size = "small",
     srcs = ["synthetic_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],

@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# TODO(ptucker): deprecate string_to_index_table_from_file and
-# string_to_index_table_from_tensor 2017-04-10.
 """Ops for lookup operations.
 
 @@string_to_index
@@ -47,7 +45,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import
-from tensorflow.python.feature_column.lookup_ops import *
+from tensorflow.contrib.lookup.lookup_ops import *
 # pylint: enable=unused-import,wildcard-import
 
 from tensorflow.python.util.all_util import remove_undocumented

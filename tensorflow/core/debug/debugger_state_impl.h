@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_DEBUGGER_STATE_IMPL_H_
-#define TENSORFLOW_DEBUGGER_STATE_IMPL_H_
+#ifndef TENSORFLOW_CORE_DEBUG_DEBUGGER_STATE_IMPL_H_
+#define TENSORFLOW_CORE_DEBUG_DEBUGGER_STATE_IMPL_H_
 
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
 
@@ -50,7 +50,7 @@ class DebugGraphDecorator : public DebugGraphDecoratorInterface {
   virtual ~DebugGraphDecorator() {}
 
   Status DecorateGraph(Graph* graph, Device* device) override;
-  Status PublishGraph(const Graph& graph) override;
+  Status PublishGraph(const Graph& graph, const string& device_name) override;
 
  private:
   DebugOptions debug_options_;
@@ -58,4 +58,4 @@ class DebugGraphDecorator : public DebugGraphDecoratorInterface {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_DEBUGGER_STATE_IMPL_H_
+#endif  // TENSORFLOW_CORE_DEBUG_DEBUGGER_STATE_IMPL_H_

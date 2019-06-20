@@ -46,7 +46,7 @@ _TABLE = "test-table"
 # The values for rows are generated such that some columns have null values. The
 # general formula here is:
 #   - The int64 column is present in every row.
-#   - The string column is only avaiable in even rows.
+#   - The string column is only available in even rows.
 #   - The float column is only available in every third row.
 _ROWS = [[0, "s_0", 0.1], [1, None, None], [2, "s_2", None], [3, None, 3.1],
          [4, "s_4", None], [5, None, None], [6, "s_6", 6.1], [7, None, None],
@@ -197,7 +197,7 @@ class BigQueryReaderOpsTest(test.TestCase):
   def _ReadAndCheckRowsUsingFeatures(self, num_rows):
     self.server.handler.num_rows = num_rows
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       feature_configs = {
           "int64_col":
               parsing_ops.FixedLenFeature(
@@ -254,7 +254,7 @@ class BigQueryReaderOpsTest(test.TestCase):
     num_rows = 10
     self.server.handler.num_rows = num_rows
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = cloud.BigQueryReader(
           project_id=_PROJECT,
           dataset_id=_DATASET,

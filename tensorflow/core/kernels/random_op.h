@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_RANDOM_OP_H_
-#define TENSORFLOW_KERNELS_RANDOM_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_RANDOM_OP_H_
+#define TENSORFLOW_CORE_KERNELS_RANDOM_OP_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/lib/random/random_distributions.h"
@@ -42,7 +42,7 @@ struct FillPhiloxRandom<CPUDevice, Distribution> {
                   Distribution dist);
 };
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 typedef Eigen::GpuDevice GPUDevice;
 // Declares the partially GPU-specialized functor struct.
 template <class Distribution>
@@ -52,9 +52,21 @@ struct FillPhiloxRandom<GPUDevice, Distribution> {
                   typename Distribution::ResultElementType* data, int64 size,
                   Distribution dist);
 };
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#if TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+// Declares the partially SYCL-specialized functor struct.
+template <class Distribution>
+struct FillPhiloxRandom<SYCLDevice, Distribution> {
+  void operator()(OpKernelContext* ctx, const SYCLDevice& d,
+                  random::PhiloxRandom gen,
+                  typename Distribution::ResultElementType* data, int64 size,
+                  Distribution dist);
+};
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_RANDOM_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_RANDOM_OP_H_

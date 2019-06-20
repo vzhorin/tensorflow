@@ -87,7 +87,8 @@ def watch_graph(run_options,
                 op_type_regex_whitelist=None,
                 tensor_dtype_regex_whitelist=None,
                 tolerate_debug_op_creation_failures=False,
-                global_step=-1):
+                global_step=-1,
+                reset_disk_byte_usage=False):
   """Add debug watches to `RunOptions` for a TensorFlow graph.
 
   To watch all `Tensor`s on the graph, let both `node_name_regex_whitelist`
@@ -121,7 +122,7 @@ def watch_graph(run_options,
       are set, the two filtering operations will occur in a logical `AND`
       relation. In other words, a node will be included if and only if it
       hits both whitelists.
-    tensor_dtype_regex_whitelist: Regular-experssion whitelist for Tensor
+    tensor_dtype_regex_whitelist: Regular-expression whitelist for Tensor
       data type, e.g., `"^int.*"`.
       This whitelist operates in logical `AND` relations to the two whitelists
       above.
@@ -130,6 +131,8 @@ def watch_graph(run_options,
       throwing exceptions.
     global_step: (`int`) Optional global_step count for this debug tensor
       watch.
+    reset_disk_byte_usage: (`bool`) whether to reset the tracked disk byte
+      usage to zero (default: `False`).
   """
 
   if isinstance(debug_ops, str):
@@ -170,6 +173,7 @@ def watch_graph(run_options,
           tolerate_debug_op_creation_failures=(
               tolerate_debug_op_creation_failures),
           global_step=global_step)
+  run_options.debug_options.reset_disk_byte_usage = reset_disk_byte_usage
 
 
 def watch_graph_with_blacklists(run_options,
@@ -180,7 +184,8 @@ def watch_graph_with_blacklists(run_options,
                                 op_type_regex_blacklist=None,
                                 tensor_dtype_regex_blacklist=None,
                                 tolerate_debug_op_creation_failures=False,
-                                global_step=-1):
+                                global_step=-1,
+                                reset_disk_byte_usage=False):
   """Add debug tensor watches, blacklisting nodes and op types.
 
   This is similar to `watch_graph()`, but the node names and op types are
@@ -210,7 +215,7 @@ def watch_graph_with_blacklists(run_options,
       relation. In other words, a node will be excluded if it hits either of
       the two blacklists; a node will be included if and only if it hits
       neither of the blacklists.
-    tensor_dtype_regex_blacklist: Regular-experssion blacklist for Tensor
+    tensor_dtype_regex_blacklist: Regular-expression blacklist for Tensor
       data type, e.g., `"^int.*"`.
       This blacklist operates in logical `OR` relations to the two whitelists
       above.
@@ -219,6 +224,8 @@ def watch_graph_with_blacklists(run_options,
       throwing exceptions.
     global_step: (`int`) Optional global_step count for this debug tensor
       watch.
+    reset_disk_byte_usage: (`bool`) whether to reset the tracked disk byte
+      usage to zero (default: `False`).
   """
 
   if isinstance(debug_ops, str):
@@ -259,3 +266,4 @@ def watch_graph_with_blacklists(run_options,
           tolerate_debug_op_creation_failures=(
               tolerate_debug_op_creation_failures),
           global_step=global_step)
+    run_options.debug_options.reset_disk_byte_usage = reset_disk_byte_usage

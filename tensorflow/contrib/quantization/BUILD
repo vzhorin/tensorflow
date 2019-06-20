@@ -1,17 +1,18 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
-package(default_visibility = ["//visibility:public"])
-
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_gen_op_wrapper_py",
-    "tf_custom_op_library",
+    "tf_custom_op_library",  # @unused
+    "tf_gen_op_wrapper_py",  # @unused
 )
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 py_library(
     name = "quantization_py",
@@ -35,13 +36,10 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_gen",
-        "//tensorflow/python:framework",
+        "//tensorflow/python:common_shapes",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python:math_ops_gen",
-        "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
     ],
 )
@@ -51,16 +49,4 @@ filegroup(
     data = glob([
         "**/*.py",
     ]),
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
